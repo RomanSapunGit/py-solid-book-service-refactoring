@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import json
 import xml.etree.ElementTree as ElementTree
+from typing import Any
 
 
 class Serializer(ABC):
@@ -21,13 +22,15 @@ class Displayer(ABC):
         pass
 
 
+# === Concrete Implementations ===
+
 class XmlSerializer(Serializer):
     def serialize(self, title: str, content: str) -> str:
         root = ElementTree.Element("book")
-        title_element = ElementTree.SubElement(root, "title")
-        title_element.text = title
-        content_element = ElementTree.SubElement(root, "content")
-        content_element.text = content
+        title_el = ElementTree.SubElement(root, "title")
+        title_el.text = title
+        content_el = ElementTree.SubElement(root, "content")
+        content_el.text = content
         return ElementTree.tostring(root, encoding="unicode")
 
 
@@ -48,86 +51,86 @@ class ReversePrinter(Printer):
         print(content[::-1])
 
 
-class ReverseDisplayer(Displayer):
-    def display(self, content: str) -> None:
-        print(content[::-1])
-
-
 class ConsoleDisplayer(Displayer):
     def display(self, content: str) -> None:
         print(content)
 
 
+class ReverseDisplayer(Displayer):
+    def display(self, content: str) -> None:
+        print(content[::-1])
+
+
+# === High-level Book Entities (Depend on Abstractions) ===
+
 class Book:
     def __init__(self, title: str, content: str) -> None:
         self.title = title
         self.content = content
-        self.book_displayer = BookDisplayer(self)
-        self.book_printer = BookPrinter(self)
-        self.book_serializer = BookSerializer(self)
 
-    def raise_value_error(self, type_element: str, value: str) -> None:
-        raise ValueError(f"Unknown {type_element} type: {value}")
+    def raise_value_error(self, type_: str, value: Any) -> None:
+        raise ValueError(f"Unknown {type_} type: {value}")
 
 
 class BookSerializer:
-    def __init__(self, book: Book) -> None:
+    def __init__(self, book: Book, serializers: dict[str, Serializer]) -> None:
         self.book = book
-        self.json_serializer = JsonSerializer()
-        self.xml_serializer = XmlSerializer()
+        self.serializers = serializers
 
     def serialize(self, serialize_type: str) -> str:
-        if serialize_type == "json":
-            return self.json_serializer.serialize(
-                self.book.title, self.book.content
-            )
-        elif serialize_type == "xml":
-            return self.xml_serializer.serialize(
-                self.book.title, self.book.content
-            )
-        else:
+        serializer = self.serializers.get(serialize_type)
+        if not serializer:
             self.book.raise_value_error("serialize", serialize_type)
-            return ""
+        return serializer.serialize(self.book.title, self.book.content)
 
 
 class BookPrinter:
-    def __init__(self, book: Book) -> None:
+    def __init__(self, book: Book, printers: dict[str, Printer]) -> None:
         self.book = book
-        self.console_printer = ConsolePrinter()
-        self.reverse_printer = ReversePrinter()
+        self.printers = printers
 
     def print_book(self, print_type: str) -> None:
-        if print_type == "console":
-            self.console_printer.print(self.book.title, self.book.content)
-        elif print_type == "reverse":
-            self.reverse_printer.print(self.book.title, self.book.content)
-        else:
+        printer = self.printers.get(print_type)
+        if not printer:
             self.book.raise_value_error("print", print_type)
+        printer.print(self.book.title, self.book.content)
 
 
 class BookDisplayer:
-    def __init__(self, book: Book) -> None:
+    def __init__(self, book: Book, displayers: dict[str, Displayer]) -> None:
         self.book = book
-        self.console_displayer = ConsoleDisplayer()
-        self.reverse_displayer = ReverseDisplayer()
+        self.displayers = displayers
 
     def display(self, display_type: str) -> None:
-        if display_type == "console":
-            self.console_displayer.display(self.book.content)
-        elif display_type == "reverse":
-            self.reverse_displayer.display(self.book.content)
-        else:
+        displayer = self.displayers.get(display_type)
+        if not displayer:
             self.book.raise_value_error("display", display_type)
+        displayer.display(self.book.content)
 
 
-def main(book: Book, commands: list[tuple[str, str]]) -> None | str:
+def main(book: Book, commands: list[tuple[str, str]]) -> None:
+    serializer = BookSerializer(book, {
+        "json": JsonSerializer(),
+        "xml": XmlSerializer()
+    })
+
+    printer = BookPrinter(book, {
+        "console": ConsolePrinter(),
+        "reverse": ReversePrinter()
+    })
+
+    displayer = BookDisplayer(book, {
+        "console": ConsoleDisplayer(),
+        "reverse": ReverseDisplayer()
+    })
+
     for cmd, method_type in commands:
         if cmd == "display":
-            book.book_displayer.display(method_type)
+            displayer.display(method_type)
         elif cmd == "print":
-            book.book_printer.print_book(method_type)
+            printer.print_book(method_type)
         elif cmd == "serialize":
-            return book.book_serializer.serialize(method_type)
+            return serializer.serialize(method_type)
 
 
 if __name__ == "__main__":
